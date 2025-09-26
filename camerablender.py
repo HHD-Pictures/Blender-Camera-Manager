@@ -27,6 +27,7 @@ class CM_OT_AddCamera(bpy.types.Operator):
         
         bpy.ops.object.camera_add()
         cam_obj = context.active_object
+        
         context.scene.camera = cam_obj
         
         for area in context.window.screen.areas:
@@ -65,19 +66,52 @@ class CM_OT_RenderAll(bpy.types.Operator):
     def execute(self, context):
         scene = context.scene
         original_camera = scene.camera
-        output_dir = bpy.path.abspath("//renders/")
-
+        
+        if bpy.data.filepath:
+            blend_dir = os.path.dirname(bpy.data.filepath)
+            output_dir = os.path.join(blend_dir, "renders")
+        else:
+            output_dir = os.path.join(bpy.app.tempdir, "renders")
+        
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        for cam in [obj for obj in scene.objects if obj.type == 'CAMERA']:
-            scene.camera = cam
-            filepath = os.path.join(output_dir, f"{cam.name}.png")
-            scene.render.filepath = filepath
-            bpy.ops.render.render(write_still=True)
+        cameras = [obj for obj in scene.objects if obj.type == 'CAMERA']
+        
+        if not cameras:
+            self.report({'WARNING'}, "No cameras found in the scene")
+            return {'CANCELLED'}
 
-        scene.camera = original_camera
-        self.report({'INFO'}, f"Renders saved to {output_dir}")
+        original_filepath = scene.render.filepath
+        original_resolution_x = scene.render.resolution_x
+        original_resolution_y = scene.render.resolution_y
+        original_percentage = scene.render.resolution_percentage
+
+        try:
+            for i, cam in enumerate(cameras):
+                self.report({'INFO'}, f"Rendering camera {i+1}/{len(cameras)}: {cam.name}")
+                
+                scene.camera = cam
+                
+                context.view_layer.update()
+                
+                filepath = os.path.join(output_dir, cam.name)
+                scene.render.filepath = filepath
+                
+                bpy.ops.render.render(write_still=True)
+                
+        except Exception as e:
+            self.report({'ERROR'}, f"Rendering failed: {str(e)}")
+            return {'CANCELLED'}
+        
+        finally:
+            scene.camera = original_camera
+            scene.render.filepath = original_filepath
+            scene.render.resolution_x = original_resolution_x
+            scene.render.resolution_y = original_resolution_y
+            scene.render.resolution_percentage = original_percentage
+
+        self.report({'INFO'}, f"All renders saved to: {output_dir}")
         return {'FINISHED'}
 
 
